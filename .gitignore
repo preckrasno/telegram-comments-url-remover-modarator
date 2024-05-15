@@ -1,0 +1,54 @@
+# Ignore MacOS system files
+.DS_Store
+
+# Ignore Go binary files
+telegram-moderator
+
+# Ignore local environment files
+.env
+.local
+
+# Ignore certificates and keys
+cmd/server/certs/*.key
+cmd/server/certs/*.pem
+
+# Ignore VSCode settings
+.vscode/
+
+# Ignore build output
+/tmp/
+output.sh
+output.txt
+build-errors.log
+
+# Ignore node_modules (if you have any Node.js projects)
+node_modules/
+
+# Ignore logs
+*.log
+
+# Ignore compiled object files
+*.o
+
+# Ignore coverage files
+coverage/
+
+# Ignore dependency directories
+vendor/
+
+# Ignore Go modules
+/go/bin/
+/go/pkg/
+/go/src/
+
+# Ignore specific directories in the project
+cmd/server/.git/
+cmd/.DS_Store
+internal/.DS_Store
+pkg/.DS_Store
+
+# Ignore Firebase admin SDK JSON file (if it's sensitive or not needed)
+telegram-moderator-bot-firebase-adminsdk-tw9vv-d82386e022.json
+
+# Ignore any other sensitive or temporary files
+bodies.txt
