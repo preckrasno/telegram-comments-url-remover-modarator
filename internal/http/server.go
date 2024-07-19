@@ -1,4 +1,5 @@
 // internal/http/server.go
+
 package http
 
 import (
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"telegram_moderator/internal/config"
 	"telegram_moderator/pkg/models"
+	"telegram_moderator/pkg/types"
 	"time"
 )
 
@@ -90,7 +92,7 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 
 			if len(validURLs) > 0 {
 				// check if user is already in group calling getChatMember
-				isUserGroupMember := isUserGroupMember(update.Message.From.ID, update.Message.Chat.ID, update.Message.From.FirstName)
+				isUserGroupMember := isUserGroupMember(update.Message.From.ID, update.Message.Chat.ID, update.Message.From.FirstName, update.Message.From.Username)
 
 				if !isUserGroupMember {
 					// reply to user "You are not a member of this group"
@@ -179,7 +181,7 @@ func CheckURLsInString(s string, tlds map[string]string) []string {
 	return validURLs
 }
 
-func isUserGroupMember(userId int64, chatId int64, firstName string) bool {
+func isUserGroupMember(userId int64, chatId int64, firstName string, username string) bool {
 
 	// get token from env
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
@@ -221,11 +223,33 @@ func isUserGroupMember(userId int64, chatId int64, firstName string) bool {
 	resultResponse := response["result"].(map[string]interface{})
 	status := resultResponse["status"].(string)
 
-	if status == "member" || status == "administrator" || status == "creator" || firstName == "Telegram" {
-		return true
+	isTrustedSender := checkIfTrustedSender(status, firstName, username)
+
+	return isTrustedSender
+}
+
+func checkIfTrustedSender(status string, firstName string, usernameArg string) bool {
+
+	for _, role := range types.TrustedRoles {
+		if status == string(role) {
+			return true
+		}
+	}
+
+	for _, name := range types.TrustedNames {
+		if firstName == string(name) {
+			return true
+		}
+	}
+
+	for _, username := range types.TrustedUsernames {
+		if usernameArg == string(username) {
+			return true
+		}
 	}
 
 	return false
+
 }
 
 func deleteMessage(chatId int64, messageId int64) {

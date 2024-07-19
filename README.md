@@ -16,26 +16,26 @@ Create a `.env` file in the `cmd/server` by copying the `.env.example` and renam
 
 ## Build
 
-Go to the server folder:
+Go to the server folder (execute the command from the local machine):
 ```bash
 cd cmd/server
 ```
-Create a binary for the server:
+Create a binary for the server (execute the command from the local machine):
 ```bash
 GOOS=linux GOARCH=amd64 go build -o ../../telegram-moderator
 ```
-Stop the service on remote server if it's running:
+Stop the service on remote server if it's running (execute the command from the server):
 ```bash
 sudo systemctl stop telegram-moderator.service
 ```
 
-Put the binary from local machine to the server via the `scp` command and start the service. Example of `scp` command:
+Put the binary from local machine to the server via the `scp` command and start the service. Example of `scp` command (execute the command from the local machine):
 
 ```bash
 scp ../../telegram-moderator scaleway_ubuntu_11:~/proj/telegram-moderator/
 ```
 
-Start the service on the remote server:
+Start the service on the remote server (execute the command from the server):
 
 ```bash
 sudo systemctl start telegram-moderator.service
@@ -43,7 +43,7 @@ sudo systemctl start telegram-moderator.service
 
 ## First Deploy
 
-Create a systemd service file:
+Create a systemd service file (execute this and the following commands from the server):
 
 ```bash
 sudo nano /etc/systemd/system/telegram-moderator.service
