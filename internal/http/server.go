@@ -179,7 +179,7 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessage
 
 	postMessageIdInt, _ = strconv.ParseInt(postMessageId, 10, 64)
 
-	var deletionText string = "Message was sent by non member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
+	var deletionText string = "Message was sent by non group member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
 
 	sendDebugMessage(callbackQuery.Message.Chat.ID, "Prepared deletion text: "+deletionText)
 
@@ -361,7 +361,7 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 			postMessageId := userSentMessageInPost["postMessageId"]
 			postMessageIdInt, _ := strconv.ParseInt(postMessageId, 10, 64)
 
-			var deletionText string = "Message was sent by non member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
+			var deletionText string = "Message was sent by non group member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
 
 			sendDebugMessage(chatId, "report text: "+deletionText)
 
