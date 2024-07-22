@@ -4,7 +4,7 @@ package models
 
 type Update struct {
 	UpdateID      int64             `json:"update_id"`
-	Message       Message           `json:"message"`
+	Message       *Message          `json:"message,omitempty"`
 	MyChatMember  *ChatMemberUpdate `json:"my_chat_member,omitempty"`
 	CallbackQuery *CallbackQuery    `json:"callback_query,omitempty"`
 }

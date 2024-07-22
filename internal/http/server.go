@@ -26,7 +26,6 @@ func StartServer(port string) {
 
 	// Register your webhook handlers
 	mux.HandleFunc("/", telegramWebhookHandler)
-	mux.HandleFunc("/callback", handleCallbackQuery)
 
 	// echo handler for testing
 	mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
@@ -83,28 +82,11 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if update.Message.From.ID != 0 && update.Message.MessageText != "" {
-		log.Printf("Message text: %s", update.Message.MessageText)
-
-		tldURL := "https://raw.githubusercontent.com/umpirsky/tld-list/master/data/en/tld.json"
-		tlds, err := FetchTLDs(tldURL)
-		if err != nil {
-			log.Printf("Error fetching TLDs: %v", err)
-			return
-		}
-
-		validURLs := CheckURLsInString(update.Message.MessageText, tlds)
-		log.Printf("Valid URLs: %v", validURLs)
-
-		if len(validURLs) > 0 {
-			isUserGroupMember := isUserGroupMember(update.Message.From.ID, update.Message.Chat.ID, update.Message.From.FirstName, update.Message.From.Username)
-			if !isUserGroupMember {
-				botQuestionMessageId := sendVerificationMessage(update.Message.Chat.ID, update.Message.MessageID)
-				if botQuestionMessageId != 0 {
-					go startDeleteTimer(update.Message.Chat.ID, update.Message.MessageID, botQuestionMessageId)
-				}
-			}
-		}
+	// Process the update
+	if update.Message != nil {
+		handleMessage(update.Message)
+	} else if update.CallbackQuery != nil {
+		handleCallbackQuery(update.CallbackQuery)
 	}
 
 	response := struct {
@@ -119,6 +101,56 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Error sending response: %v", err)
+	}
+}
+
+func handleMessage(message *models.Message) {
+	if message.From.ID != 0 && message.MessageText != "" {
+		log.Printf("Message text: %s", message.MessageText)
+
+		tldURL := "https://raw.githubusercontent.com/umpirsky/tld-list/master/data/en/tld.json"
+		tlds, err := FetchTLDs(tldURL)
+		if err != nil {
+			log.Printf("Error fetching TLDs: %v", err)
+			return
+		}
+
+		validURLs := CheckURLsInString(message.MessageText, tlds)
+		log.Printf("Valid URLs: %v", validURLs)
+
+		if len(validURLs) > 0 {
+			isUserGroupMember := isUserGroupMember(message.From.ID, message.Chat.ID, message.From.FirstName, message.From.Username)
+			if !isUserGroupMember {
+				botQuestionMessageId := sendVerificationMessage(message.Chat.ID, message.MessageID)
+				if botQuestionMessageId != 0 {
+					go startDeleteTimer(message.Chat.ID, message.MessageID, botQuestionMessageId)
+				}
+			}
+		}
+	}
+}
+
+func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
+	answer := callbackQuery.Data
+	userMessageId := callbackQuery.Message.ReplyToMessage.MessageID
+
+	// Stop the timer if it exists
+	if timer, ok := deleteTimers.Load(userMessageId); ok {
+		timer.(*time.Timer).Stop()
+		deleteTimers.Delete(userMessageId)
+	}
+
+	if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
+		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
+		sentOwnBotQuestionIds.Delete(userMessageId)
+	}
+
+	if answer == "5" {
+		// Correct answer, send confirmation message
+		sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
+	} else {
+		// Wrong answer, delete the original user message
+		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
 	}
 }
 
@@ -180,39 +212,6 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	deleteMessage(chatId, botQuestionMessageId)
 	deleteTimers.Delete(userMessageId)
 	sentOwnBotQuestionIds.Delete(userMessageId)
-}
-
-func handleCallbackQuery(w http.ResponseWriter, r *http.Request) {
-	var update models.Update
-	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		http.Error(w, "Error parsing callback query", http.StatusBadRequest)
-		return
-	}
-
-	callbackQuery := update.CallbackQuery
-	if callbackQuery != nil {
-		answer := callbackQuery.Data
-		userMessageId := callbackQuery.Message.ReplyToMessage.MessageID
-
-		// Stop the timer if it exists
-		if timer, ok := deleteTimers.Load(userMessageId); ok {
-			timer.(*time.Timer).Stop()
-			deleteTimers.Delete(userMessageId)
-		}
-
-		if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
-			deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
-			sentOwnBotQuestionIds.Delete(userMessageId)
-		}
-
-		if answer == "5" {
-			// Correct answer, send confirmation message
-			sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
-		} else {
-			// Wrong answer, delete the original user message
-			deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
-		}
-	}
 }
 
 func sendMessage(chatId int64, messageId int64, text string) {
