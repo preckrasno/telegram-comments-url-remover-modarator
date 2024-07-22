@@ -15,8 +15,27 @@ import (
 	"time"
 )
 
+// example of map: deleteTimers.Store(userMessageId, timer)
 var deleteTimers = sync.Map{}
+
+// example of map: sentOwnBotQuestionIds.Store(userMessageId, botQuestionMessageId)
 var sentOwnBotQuestionIds = sync.Map{}
+
+// struct to store user id, username and first name, post id where user sent message in order to send message in reply to post
+// example of struct: userSentMessageInPost.Store(userMessageId, userId, username, firstName, postMessageId)
+// example:
+//
+//	userSentMessageInPost := map[string]{
+//		"userMessageId": "123",
+//		"userId" : "123",
+//		"username" : "username",
+//		"firstName" : "firstName",
+//		"postMessageId" : "123",
+//	}
+// var userSentMessageInPost = sync.Map{}
+
+// list of userSentMessageInPost
+var userSentMessageInPostList []map[string]string
 
 var debugRepliesInChat = true
 
@@ -88,7 +107,7 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		handleMessage(update.Message)
 	} else if update.CallbackQuery != nil {
 		sendDebugMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", update.CallbackQuery.Data))
-		handleCallbackQuery(update.CallbackQuery)
+		handleCallbackQuery(update.CallbackQuery, update.CallbackQuery.Message.MessageID)
 	}
 
 	response := struct {
@@ -124,6 +143,15 @@ func handleMessage(message *models.Message) {
 		if len(validURLs) > 0 {
 			isUserGroupMember := isUserGroupMember(message.From.ID, message.Chat.ID, message.From.FirstName, message.From.Username)
 			if !isUserGroupMember {
+				// save user id, username and first name, post id where user sent message in order to send message in reply to post
+				userSentMessageInPost := map[string]string{
+					"userMessageId": strconv.FormatInt(message.MessageID, 10),
+					"userId":        strconv.FormatInt(message.From.ID, 10),
+					"username":      message.From.Username,
+					"firstName":     message.From.FirstName,
+					"postMessageId": strconv.FormatInt(message.ReplyToMessage.MessageID, 10),
+				}
+				userSentMessageInPostList = append(userSentMessageInPostList, userSentMessageInPost)
 				sendDebugMessage(message.Chat.ID, "User is not a group member, user message id is "+strconv.FormatInt(message.MessageID, 10))
 				botQuestionMessageId := sendBotVerificationQuestionMessage(message.Chat.ID, message.MessageID)
 				if botQuestionMessageId != 0 {
@@ -134,9 +162,41 @@ func handleMessage(message *models.Message) {
 	}
 }
 
-func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
+func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessageId int64) {
 	answer := callbackQuery.Data
-	userMessageId := callbackQuery.Message.ReplyToMessage.MessageID
+	var userMessageId int64 = callbackQuery.Message.ReplyToMessage.MessageID
+	var userMessageIdString string = strconv.FormatInt(userMessageId, 10)
+	var userId string
+	var userIdInt int64
+	var username string
+	var firstName string
+	var postMessageId string
+	var postMessageIdInt int64
+
+	// find userSentMessageInPost in userSentMessageInPostList
+	for _, userSentMessageInPost := range userSentMessageInPostList {
+		if userSentMessageInPost["userMessageId"] == userMessageIdString {
+			userId = userSentMessageInPost["userId"]
+			username = userSentMessageInPost["username"]
+			firstName = userSentMessageInPost["firstName"]
+			postMessageId = userSentMessageInPost["postMessageId"]
+
+		}
+	}
+
+	userIdInt, _ = strconv.ParseInt(userId, 10, 64)
+
+	postMessageIdInt, _ = strconv.ParseInt(postMessageId, 10, 64)
+
+	var deletionText string = "Message was sent by non member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
+
+	sendDebugMessage(callbackQuery.Message.Chat.ID, "Prepared deletion text: "+deletionText)
+
+	// check if callbackQuery user id is the same as user id in userSentMessageInPost
+	if callbackQuery.From.ID != userIdInt {
+		sendDebugMessage(callbackQuery.Message.Chat.ID, "Callback query user id is not the same as user id in userSentMessageInPost, ignoring.")
+		return
+	}
 
 	// Stop the timer if it exists
 	if timer, ok := deleteTimers.Load(userMessageId); ok {
@@ -147,16 +207,41 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 	sendDebugMessage(callbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", answer))
 
 	if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
+		// delete bot question message
 		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
 		sentOwnBotQuestionIds.Delete(userMessageId)
 	}
 
 	if answer == "5" {
 		sendDebugMessage(callbackQuery.Message.Chat.ID, "Correct answer received")
-		sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
+		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionMessageId)
 	} else {
 		sendDebugMessage(callbackQuery.Message.Chat.ID, "Wrong answer received, deleting message.")
 		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
+		// send report message in reply to post that message was sent by non group member, user id, username and first name
+		sendDebugMessage(callbackQuery.Message.Chat.ID, "After user answered wrong, after deleting their message, sending message in reply to post with report text.")
+		// sendMessageInReplyToPost(callbackQuery.Message.Chat.ID, deletionText, postMessageIdInt)
+
+		res, err := sendMessage(callbackQuery.Message.Chat.ID, postMessageIdInt, deletionText)
+
+		if err != nil {
+			log.Printf("Error sending message: %v", err)
+			sendDebugMessage(callbackQuery.Message.Chat.ID, "Error sending message")
+			return
+		}
+
+		if res == 0 {
+			log.Printf("Error sending message: %v", err)
+			sendDebugMessage(callbackQuery.Message.Chat.ID, "Error sending message")
+			return
+		}
+
+		// delete userSentMessageInPost from userSentMessageInPostList
+		for i, userSentMessageInPost := range userSentMessageInPostList {
+			if userSentMessageInPost["userMessageId"] == userMessageIdString {
+				userSentMessageInPostList = append(userSentMessageInPostList[:i], userSentMessageInPostList[i+1:]...)
+			}
+		}
 
 	}
 }
@@ -229,10 +314,51 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	deleteMessage(chatId, botQuestionMessageId)
 	deleteTimers.Delete(userMessageId)
 	sentOwnBotQuestionIds.Delete(userMessageId)
+
+	sendDebugMessage(chatId, "after timer, after deleting messages, sending message in reply to post with report text.")
+
+	var userMessageIdString string = strconv.FormatInt(userMessageId, 10)
+	for _, userSentMessageInPost := range userSentMessageInPostList {
+		if userSentMessageInPost["userMessageId"] == userMessageIdString {
+			userId := userSentMessageInPost["userId"]
+			username := userSentMessageInPost["username"]
+			firstName := userSentMessageInPost["firstName"]
+			postMessageId := userSentMessageInPost["postMessageId"]
+			postMessageIdInt, _ := strconv.ParseInt(postMessageId, 10, 64)
+
+			var deletionText string = "Message was sent by non member. User ID is " + userId + " user name is \"" + firstName + "\" username is @" + username
+
+			sendDebugMessage(chatId, "report text: "+deletionText)
+
+			res, err := sendMessage(chatId, postMessageIdInt, deletionText)
+
+			if err != nil {
+				log.Printf("Error sending message: %v", err)
+				sendDebugMessage(chatId, "Error sending message")
+				return
+			}
+
+			if res == 0 {
+				log.Printf("Error sending message: %v", err)
+				sendDebugMessage(chatId, "Error sending message")
+				return
+			}
+
+		}
+
+	}
+
+	// delete userSentMessageInPost from userSentMessageInPostList
+	for i, userSentMessageInPost := range userSentMessageInPostList {
+		if userSentMessageInPost["userMessageId"] == userMessageIdString {
+			userSentMessageInPostList = append(userSentMessageInPostList[:i], userSentMessageInPostList[i+1:]...)
+		}
+	}
 }
 
-func sendMessage(chatId int64, messageId int64, text string) {
+func sendMessage(chatId int64, messageId int64, text string) (int64, error) {
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
+	sendDebugMessage(chatId, "Trying to send message. Text: "+text)
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s&reply_to_message_id=%d",
 		token, chatId, text, messageId)
 
@@ -240,7 +366,7 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	if err != nil {
 		log.Printf("Error sending message: %v", err)
 		sendDebugMessage(chatId, "Error sending message")
-		return
+		return 0, err
 	}
 	defer resp.Body.Close()
 
@@ -248,11 +374,13 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
 		sendDebugMessage(chatId, "Error reading send message response")
-		return
+		return 0, err
 	}
 
 	log.Printf("Send message response: %s", string(body))
 	sendDebugMessage(chatId, fmt.Sprintf("Send message response: %s", string(body)))
+
+	return 1, nil
 }
 
 func deleteMessage(chatId int64, messageId int64) {
@@ -277,36 +405,4 @@ func deleteMessage(chatId int64, messageId int64) {
 
 	log.Printf("Delete message response: %s", string(body))
 	sendDebugMessage(chatId, fmt.Sprintf("Delete message response: %s, message id is %d", string(body), messageId))
-}
-
-func sendMessageInReplyToPost(chatId int64, text string, messageId int64) {
-	// get token from env
-	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
-
-	// create a new request
-	req, err := http.NewRequest("GET", "https://api.telegram.org/bot"+token+"/sendMessage?chat_id="+strconv.FormatInt(chatId, 10)+"&text="+text+"&reply_to_message_id="+strconv.FormatInt(messageId, 10), nil)
-
-	if err != nil {
-		log.Printf("Error creating request: %v", err)
-	}
-
-	// send the request
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
-
-	if err != nil {
-		log.Printf("Error sending request: %v", err)
-	}
-
-	// read the response
-	body, err := io.ReadAll(resp.Body)
-
-	if err != nil {
-		log.Printf("Error reading response: %v", err)
-	}
-
-	// log the response
-	log.Printf("Response: %s", string(body))
-
 }

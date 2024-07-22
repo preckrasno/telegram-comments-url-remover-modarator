@@ -18,6 +18,8 @@ func sendDebugMessage(chatId int64, text string) {
 	var chatIdString string = strconv.FormatInt(chatId, 10)
 	var debugChatId string = config.GetEnv("DEBUG_CHAT_ID", "default")
 
+	var updatedText string = "Debug message: " + text
+
 	if !debugRepliesInChat {
 		return
 	}
@@ -29,7 +31,7 @@ func sendDebugMessage(chatId int64, text string) {
 	// var updatedText string = text + " (debug chat id: " + debugChatId + " chat id: " + chatIdString + ")"
 
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s", token, chatId, text)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s", token, chatId, updatedText)
 
 	resp, err := http.Get(url)
 	if err != nil {
