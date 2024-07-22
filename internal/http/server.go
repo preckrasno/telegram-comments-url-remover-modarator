@@ -22,9 +22,6 @@ var sentOwnBotQuestionIds = sync.Map{}
 
 var debugRepliesInChat = true
 
-// TODO: create method that will be called on every new message with url before sending question bot message, before reacting on button press press by user,
-// before deleting own bot question message or user message
-
 func StartServer(port string) {
 	mux := http.NewServeMux()
 
@@ -87,14 +84,11 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process the update
 	if update.Message != nil {
+		sendDebugMessage(update.Message.Chat.ID, fmt.Sprintf("Received message: %s", update.Message.MessageText))
 		handleMessage(update.Message)
 	} else if update.CallbackQuery != nil {
-		if debugRepliesInChat {
-			// TODO: call debug reply method
-		}
-
+		sendDebugMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", update.CallbackQuery.Data))
 		handleCallbackQuery(update.CallbackQuery)
 	}
 
@@ -121,6 +115,7 @@ func handleMessage(message *models.Message) {
 		tlds, err := FetchTLDs(tldURL)
 		if err != nil {
 			log.Printf("Error fetching TLDs: %v", err)
+			sendDebugMessage(message.Chat.ID, "Error fetching TLDs")
 			return
 		}
 
@@ -130,12 +125,8 @@ func handleMessage(message *models.Message) {
 		if len(validURLs) > 0 {
 			isUserGroupMember := isUserGroupMember(message.From.ID, message.Chat.ID, message.From.FirstName, message.From.Username)
 			if !isUserGroupMember {
-
-				if debugRepliesInChat {
-					// TODO: call debug reply method
-				}
-
-				botQuestionMessageId := sendVerificationMessage(message.Chat.ID, message.MessageID)
+				sendDebugMessage(message.Chat.ID, "User is not a group member, user message id is "+strconv.FormatInt(message.MessageID, 10))
+				botQuestionMessageId := sendBotVerificationQuestionMessage(message.Chat.ID, message.MessageID)
 				if botQuestionMessageId != 0 {
 					go startDeleteTimer(message.Chat.ID, message.MessageID, botQuestionMessageId)
 				}
@@ -154,9 +145,7 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 		deleteTimers.Delete(userMessageId)
 	}
 
-	if debugRepliesInChat {
-		// TODO: call debug reply method
-	}
+	sendDebugMessage(callbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", answer))
 
 	if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
 		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
@@ -164,23 +153,14 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 	}
 
 	if answer == "5" {
-
-		if debugRepliesInChat {
-			// TODO: call debug reply method
-		}
-		// Correct answer, send confirmation message
 		sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
 	} else {
-
-		if debugRepliesInChat {
-			// TODO: call debug reply method
-		}
-		// Wrong answer, delete the original user message
+		sendDebugMessage(callbackQuery.Message.Chat.ID, "Wrong answer received, deleting message.")
 		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
 	}
 }
 
-func sendVerificationMessage(chatId int64, messageId int64) int64 {
+func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
 	text := "Are you a spammer? If not, solve 3 + 2"
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s&reply_to_message_id=%d&reply_markup=%s",
@@ -189,13 +169,16 @@ func sendVerificationMessage(chatId int64, messageId int64) int64 {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error sending verification message: %v", err)
+		sendDebugMessage(chatId, "Error sending verification message")
 		return 0
 	}
+
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
+		sendDebugMessage(chatId, "Error reading verification message response")
 		return 0
 	}
 
@@ -207,15 +190,18 @@ func sendVerificationMessage(chatId int64, messageId int64) int64 {
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		log.Printf("Error parsing response: %v", err)
+		sendDebugMessage(chatId, "Error parsing verification message response")
 		return 0
 	}
 
 	if result.Ok {
 		sentOwnBotQuestionIds.Store(messageId, result.Result.MessageID)
+		sendDebugMessage(chatId, fmt.Sprintf("Sent bot verification question message, message id is %d", result.Result.MessageID))
 		return result.Result.MessageID
 	}
 
 	log.Printf("Verification message response: %s", string(body))
+	sendDebugMessage(chatId, fmt.Sprintf("Verification message response: %s", string(body)))
 	return 0
 }
 
@@ -236,9 +222,7 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	deleteTimers.Store(userMessageId, timer)
 	<-timer.C
 
-	if debugRepliesInChat {
-		// TODO: call debug reply method
-	}
+	sendDebugMessage(chatId, "Timeout reached, deleting messages")
 
 	deleteMessage(chatId, userMessageId)
 	deleteMessage(chatId, botQuestionMessageId)
@@ -254,6 +238,7 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error sending message: %v", err)
+		sendDebugMessage(chatId, "Error sending message")
 		return
 	}
 	defer resp.Body.Close()
@@ -261,10 +246,12 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
+		sendDebugMessage(chatId, "Error reading send message response")
 		return
 	}
 
 	log.Printf("Send message response: %s", string(body))
+	sendDebugMessage(chatId, fmt.Sprintf("Send message response: %s", string(body)))
 }
 
 func deleteMessage(chatId int64, messageId int64) {
@@ -275,6 +262,7 @@ func deleteMessage(chatId int64, messageId int64) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error deleting message: %v", err)
+		sendDebugMessage(chatId, "Error deleting message")
 		return
 	}
 	defer resp.Body.Close()
@@ -282,10 +270,12 @@ func deleteMessage(chatId int64, messageId int64) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
+		sendDebugMessage(chatId, "Error reading delete message response")
 		return
 	}
 
 	log.Printf("Delete message response: %s", string(body))
+	sendDebugMessage(chatId, fmt.Sprintf("Delete message response: %s, message id is %d", string(body), messageId))
 }
 
 func FetchTLDs(url string) (map[string]string, error) {
@@ -384,4 +374,28 @@ func checkIfTrustedSender(status string, firstName string, usernameArg string) b
 	}
 
 	return false
+}
+
+func sendDebugMessage(chatId int64, text string) {
+	if !debugRepliesInChat {
+		return
+	}
+
+	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s", token, chatId, text)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Printf("Error sending debug message: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error reading debug message response: %v", err)
+		return
+	}
+
+	log.Printf("Debug message response: %s", string(body))
 }
