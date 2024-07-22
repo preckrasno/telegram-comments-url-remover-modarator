@@ -20,7 +20,12 @@ var sentOwnBotQuestionIds = sync.Map{}
 
 var debugRepliesInChat = true
 
+// debug chat id is set in .env file, starts with the "-" (minus sign), example: -1234567890
+// var debugChatIdString string = config.GetEnv("DEBUG_CHAT_ID", "default")
+
 func StartServer(port string) {
+	//  _ = strconv.ParseInt(debugChatIdString, 10, 64)
+
 	mux := http.NewServeMux()
 
 	// Register your webhook handlers
@@ -83,10 +88,12 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if update.Message != nil {
-		sendDebugMessage(update.Message.Chat.ID, fmt.Sprintf("Received message: %s", update.Message.MessageText))
+		sendDebugMessage(
+			update.Message.Chat.ID, fmt.Sprintf("Received message: %s", update.Message.MessageText))
 		handleMessage(update.Message)
 	} else if update.CallbackQuery != nil {
-		sendDebugMessage(update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", update.CallbackQuery.Data))
+		sendDebugMessage(
+			update.CallbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", update.CallbackQuery.Data))
 		handleCallbackQuery(update.CallbackQuery)
 	}
 
@@ -113,7 +120,8 @@ func handleMessage(message *models.Message) {
 		tlds, err := FetchTLDs(tldURL)
 		if err != nil {
 			log.Printf("Error fetching TLDs: %v", err)
-			sendDebugMessage(message.Chat.ID, "Error fetching TLDs")
+			sendDebugMessage(
+				message.Chat.ID, "Error fetching TLDs")
 			return
 		}
 
@@ -123,7 +131,8 @@ func handleMessage(message *models.Message) {
 		if len(validURLs) > 0 {
 			isUserGroupMember := isUserGroupMember(message.From.ID, message.Chat.ID, message.From.FirstName, message.From.Username)
 			if !isUserGroupMember {
-				sendDebugMessage(message.Chat.ID, "User is not a group member, user message id is "+strconv.FormatInt(message.MessageID, 10))
+				sendDebugMessage(
+					message.Chat.ID, "User is not a group member, user message id is "+strconv.FormatInt(message.MessageID, 10))
 				botQuestionMessageId := sendBotVerificationQuestionMessage(message.Chat.ID, message.MessageID)
 				if botQuestionMessageId != 0 {
 					go startDeleteTimer(message.Chat.ID, message.MessageID, botQuestionMessageId)
@@ -143,7 +152,8 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 		deleteTimers.Delete(userMessageId)
 	}
 
-	sendDebugMessage(callbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", answer))
+	sendDebugMessage(
+		callbackQuery.Message.Chat.ID, fmt.Sprintf("Received callback query: %s", answer))
 
 	if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
 		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
@@ -151,24 +161,28 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 	}
 
 	if answer == "5" {
-		sendDebugMessage(callbackQuery.Message.Chat.ID, "Correct answer received")
+		sendDebugMessage(
+			callbackQuery.Message.Chat.ID, "Correct answer received")
 		sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
 	} else {
-		sendDebugMessage(callbackQuery.Message.Chat.ID, "Wrong answer received, deleting message.")
+		sendDebugMessage(
+			callbackQuery.Message.Chat.ID, "Wrong answer received, deleting message.")
 		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
+
 	}
 }
 
 func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
-	text := "Are you a spammer? If not, solve 3 plus 2"
+	text := "Are you a spammer? If not, solve 3 plus 2."
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s&reply_to_message_id=%d&reply_markup=%s",
 		token, chatId, text, messageId, generateInlineKeyboardMarkup())
 
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error sending verification message: %v", err)
-		sendDebugMessage(chatId, "Error sending verification message")
+		sendDebugMessage(
+			chatId, "Error sending verification message")
 		return 0
 	}
 
@@ -177,7 +191,8 @@ func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
-		sendDebugMessage(chatId, "Error reading verification message response")
+		sendDebugMessage(
+			chatId, "Error reading verification message response")
 		return 0
 	}
 
@@ -189,18 +204,21 @@ func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		log.Printf("Error parsing response: %v", err)
-		sendDebugMessage(chatId, "Error parsing verification message response")
+		sendDebugMessage(
+			chatId, "Error parsing verification message response")
 		return 0
 	}
 
 	if result.Ok {
 		sentOwnBotQuestionIds.Store(messageId, result.Result.MessageID)
-		sendDebugMessage(chatId, fmt.Sprintf("Sent bot verification question message, message id is %d", result.Result.MessageID))
+		sendDebugMessage(
+			chatId, fmt.Sprintf("Sent bot verification question message, message id is %d", result.Result.MessageID))
 		return result.Result.MessageID
 	}
 
 	log.Printf("Verification message response: %s", string(body))
-	sendDebugMessage(chatId, fmt.Sprintf("Verification message response: %s", string(body)))
+	sendDebugMessage(
+		chatId, fmt.Sprintf("Verification message response: %s", string(body)))
 	return 0
 }
 
@@ -221,7 +239,8 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	deleteTimers.Store(userMessageId, timer)
 	<-timer.C
 
-	sendDebugMessage(chatId, "Timeout reached, deleting messages")
+	sendDebugMessage(
+		chatId, "Timeout reached, deleting messages")
 
 	deleteMessage(chatId, userMessageId)
 	deleteMessage(chatId, botQuestionMessageId)
@@ -237,7 +256,8 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error sending message: %v", err)
-		sendDebugMessage(chatId, "Error sending message")
+		sendDebugMessage(
+			chatId, "Error sending message")
 		return
 	}
 	defer resp.Body.Close()
@@ -245,12 +265,14 @@ func sendMessage(chatId int64, messageId int64, text string) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
-		sendDebugMessage(chatId, "Error reading send message response")
+		sendDebugMessage(
+			chatId, "Error reading send message response")
 		return
 	}
 
 	log.Printf("Send message response: %s", string(body))
-	sendDebugMessage(chatId, fmt.Sprintf("Send message response: %s", string(body)))
+	sendDebugMessage(
+		chatId, fmt.Sprintf("Send message response: %s", string(body)))
 }
 
 func deleteMessage(chatId int64, messageId int64) {
@@ -261,7 +283,8 @@ func deleteMessage(chatId int64, messageId int64) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("Error deleting message: %v", err)
-		sendDebugMessage(chatId, "Error deleting message")
+		sendDebugMessage(
+			chatId, "Error deleting message")
 		return
 	}
 	defer resp.Body.Close()
@@ -269,10 +292,44 @@ func deleteMessage(chatId int64, messageId int64) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Printf("Error reading response: %v", err)
-		sendDebugMessage(chatId, "Error reading delete message response")
+		sendDebugMessage(
+			chatId, "Error reading delete message response")
 		return
 	}
 
 	log.Printf("Delete message response: %s", string(body))
-	sendDebugMessage(chatId, fmt.Sprintf("Delete message response: %s, message id is %d", string(body), messageId))
+	sendDebugMessage(
+		chatId, fmt.Sprintf("Delete message response: %s, message id is %d", string(body), messageId))
+}
+
+func sendMessageInReplyToPost(chatId int64, text string, messageId int64) {
+	// get token from env
+	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
+
+	// create a new request
+	req, err := http.NewRequest("GET", "https://api.telegram.org/bot"+token+"/sendMessage?chat_id="+strconv.FormatInt(chatId, 10)+"&text="+text+"&reply_to_message_id="+strconv.FormatInt(messageId, 10), nil)
+
+	if err != nil {
+		log.Printf("Error creating request: %v", err)
+	}
+
+	// send the request
+	client := &http.Client{}
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Printf("Error sending request: %v", err)
+	}
+
+	// read the response
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		log.Printf("Error reading response: %v", err)
+	}
+
+	// log the response
+	log.Printf("Response: %s", string(body))
+
 }
