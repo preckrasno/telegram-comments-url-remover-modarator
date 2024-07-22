@@ -27,7 +27,7 @@ var userSentMessageInPostList []map[string]string
 // example of map: userNeededAnswersList.Store(userMessageId string, neededAnswer int)
 var userNeededAnswersList = sync.Map{}
 
-var debugRepliesInChat = true
+var debugRepliesInChat = false
 
 func StartServer(port string) {
 
@@ -171,6 +171,7 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessage
 			firstName = userSentMessageInPost["firstName"]
 			postMessageId = userSentMessageInPost["postMessageId"]
 
+			break
 		}
 	}
 
@@ -241,6 +242,8 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessage
 		for i, userSentMessageInPost := range userSentMessageInPostList {
 			if userSentMessageInPost["userMessageId"] == userMessageIdString {
 				userSentMessageInPostList = append(userSentMessageInPostList[:i], userSentMessageInPostList[i+1:]...)
+
+				break
 			}
 		}
 
@@ -376,6 +379,7 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 				return
 			}
 
+			break
 		}
 
 	}
@@ -384,6 +388,8 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	for i, userSentMessageInPost := range userSentMessageInPostList {
 		if userSentMessageInPost["userMessageId"] == userMessageIdString {
 			userSentMessageInPostList = append(userSentMessageInPostList[:i], userSentMessageInPostList[i+1:]...)
+
+			break
 		}
 	}
 }
