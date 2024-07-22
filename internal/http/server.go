@@ -20,6 +20,11 @@ import (
 var deleteTimers = sync.Map{}
 var sentOwnBotQuestionIds = sync.Map{}
 
+var debugRepliesInChat = true
+
+// TODO: create method that will be called on every new message with url before sending question bot message, before reacting on button press press by user,
+// before deleting own bot question message or user message
+
 func StartServer(port string) {
 	mux := http.NewServeMux()
 
@@ -86,6 +91,10 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	if update.Message != nil {
 		handleMessage(update.Message)
 	} else if update.CallbackQuery != nil {
+		if debugRepliesInChat {
+			// TODO: call debug reply method
+		}
+
 		handleCallbackQuery(update.CallbackQuery)
 	}
 
@@ -121,6 +130,11 @@ func handleMessage(message *models.Message) {
 		if len(validURLs) > 0 {
 			isUserGroupMember := isUserGroupMember(message.From.ID, message.Chat.ID, message.From.FirstName, message.From.Username)
 			if !isUserGroupMember {
+
+				if debugRepliesInChat {
+					// TODO: call debug reply method
+				}
+
 				botQuestionMessageId := sendVerificationMessage(message.Chat.ID, message.MessageID)
 				if botQuestionMessageId != 0 {
 					go startDeleteTimer(message.Chat.ID, message.MessageID, botQuestionMessageId)
@@ -140,15 +154,27 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 		deleteTimers.Delete(userMessageId)
 	}
 
+	if debugRepliesInChat {
+		// TODO: call debug reply method
+	}
+
 	if botQuestionId, ok := sentOwnBotQuestionIds.Load(userMessageId); ok {
 		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionId.(int64))
 		sentOwnBotQuestionIds.Delete(userMessageId)
 	}
 
 	if answer == "5" {
+
+		if debugRepliesInChat {
+			// TODO: call debug reply method
+		}
 		// Correct answer, send confirmation message
 		sendMessage(callbackQuery.Message.Chat.ID, userMessageId, "Correct! You are not a spammer.")
 	} else {
+
+		if debugRepliesInChat {
+			// TODO: call debug reply method
+		}
 		// Wrong answer, delete the original user message
 		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
 	}
@@ -209,6 +235,11 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	timer := time.NewTimer(30 * time.Second)
 	deleteTimers.Store(userMessageId, timer)
 	<-timer.C
+
+	if debugRepliesInChat {
+		// TODO: call debug reply method
+	}
+
 	deleteMessage(chatId, userMessageId)
 	deleteMessage(chatId, botQuestionMessageId)
 	deleteTimers.Delete(userMessageId)
