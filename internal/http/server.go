@@ -3,7 +3,6 @@
 package http
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,9 +68,10 @@ func telegramWebhookHandler(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("Failed to read request body: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
 	}
-	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	defer r.Body.Close()
 
 	log.Printf("Request body: %s", string(bodyBytes))
 
@@ -165,6 +165,7 @@ func sendVerificationMessage(chatId int64, messageId int64) int64 {
 		log.Printf("Error sending verification message: %v", err)
 		return 0
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -224,6 +225,7 @@ func sendMessage(chatId int64, messageId int64, text string) {
 		log.Printf("Error sending message: %v", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -244,6 +246,7 @@ func deleteMessage(chatId int64, messageId int64) {
 		log.Printf("Error deleting message: %v", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
