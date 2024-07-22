@@ -161,7 +161,7 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery) {
 
 func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
-	text := "Are you a spammer? If not, solve 3 \u002B 2"
+	text := "Are you a spammer? If not, solve 3 plus 2"
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s&reply_to_message_id=%d&reply_markup=%s",
 		token, chatId, text, messageId, generateInlineKeyboardMarkup())
 
