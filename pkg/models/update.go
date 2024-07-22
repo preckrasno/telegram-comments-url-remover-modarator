@@ -18,11 +18,11 @@ type ChatMemberUpdate struct {
 }
 
 type CallbackQuery struct {
-	ID            int64   `json:"id"`
-	From          User    `json:"from"`
-	Message       Message `json:"message"`
-	Data          string  `json:"data"`
-	GameShortName string  `json:"game_short_name"`
+	ID            string   `json:"id"`
+	From          User     `json:"from"`
+	Message       *Message `json:"message"`
+	Data          string   `json:"data"`
+	GameShortName string   `json:"game_short_name"`
 }
 
 type ChatMember struct {
@@ -31,16 +31,16 @@ type ChatMember struct {
 }
 
 type Message struct {
-	MessageID      int64          `json:"message_id"`
-	From           User           `json:"from"`
-	Chat           Chat           `json:"chat"`
-	Date           int64          `json:"date"`
-	NewChatMember  *User          `json:"new_chat_member,omitempty"`
-	NewChatMembers []User         `json:"new_chat_members,omitempty"`
-	LeftChatMember *User          `json:"left_chat_member,omitempty"`
-	MessageText    string         `json:"text"`
-	SenderChat     SenderChat     `json:"sender_chat"`
-	ReplyToMessage ReplyToMessage `json:"reply_to_message"`
+	MessageID      int64           `json:"message_id"`
+	From           User            `json:"from"`
+	Chat           Chat            `json:"chat"`
+	Date           int64           `json:"date"`
+	NewChatMember  *User           `json:"new_chat_member,omitempty"`
+	NewChatMembers []User          `json:"new_chat_members,omitempty"`
+	LeftChatMember *User           `json:"left_chat_member,omitempty"`
+	MessageText    string          `json:"text"`
+	SenderChat     SenderChat      `json:"sender_chat"`
+	ReplyToMessage *ReplyToMessage `json:"reply_to_message"`
 }
 
 type ReplyToMessage struct {
