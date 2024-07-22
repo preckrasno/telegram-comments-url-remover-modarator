@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"sync"
@@ -21,21 +22,10 @@ var deleteTimers = sync.Map{}
 // example of map: sentOwnBotQuestionIds.Store(userMessageId, botQuestionMessageId)
 var sentOwnBotQuestionIds = sync.Map{}
 
-// struct to store user id, username and first name, post id where user sent message in order to send message in reply to post
-// example of struct: userSentMessageInPost.Store(userMessageId, userId, username, firstName, postMessageId)
-// example:
-//
-//	userSentMessageInPost := map[string]{
-//		"userMessageId": "123",
-//		"userId" : "123",
-//		"username" : "username",
-//		"firstName" : "firstName",
-//		"postMessageId" : "123",
-//	}
-// var userSentMessageInPost = sync.Map{}
-
-// list of userSentMessageInPost
 var userSentMessageInPostList []map[string]string
+
+// example of map: userNeededAnswersList.Store(userMessageId string, neededAnswer int)
+var userNeededAnswersList = sync.Map{}
 
 var debugRepliesInChat = true
 
@@ -212,9 +202,20 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessage
 		sentOwnBotQuestionIds.Delete(userMessageId)
 	}
 
-	if answer == "5" {
+	// get needed sum from userNeededAnswersList
+	neededSum, ok := userNeededAnswersList.Load(userMessageId)
+	if !ok {
+		log.Printf("Error getting needed sum from userNeededAnswersList")
+		sendDebugMessage(callbackQuery.Message.Chat.ID, "Error getting needed sum from userNeededAnswersList")
+		return
+	}
+
+	var neededAnswerString string = strconv.Itoa(neededSum.(int))
+
+	if answer == neededAnswerString {
 		sendDebugMessage(callbackQuery.Message.Chat.ID, "Correct answer received")
 		deleteMessage(callbackQuery.Message.Chat.ID, botQuestionMessageId)
+		userNeededAnswersList.Delete(userMessageId)
 	} else {
 		sendDebugMessage(callbackQuery.Message.Chat.ID, "Wrong answer received, deleting message.")
 		deleteMessage(callbackQuery.Message.Chat.ID, userMessageId)
@@ -248,9 +249,16 @@ func handleCallbackQuery(callbackQuery *models.CallbackQuery, botQuestionMessage
 
 func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	token := config.GetEnv("TELEGRAM_BOT_API_TOKEN", "default")
-	text := "Are you a spammer? If not, solve 3 plus 2."
+	// generate two numbers between 1 and 10
+	num1 := rand.Intn(10) + 1
+	num2 := rand.Intn(10) + 1
+	neededSum := num1 + num2
+
+	userNeededAnswersList.Store(messageId, neededSum)
+
+	text := fmt.Sprintf("Are you a spammer? If not, solve %d plus %d.", num1, num2)
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage?chat_id=%d&text=%s&reply_to_message_id=%d&reply_markup=%s",
-		token, chatId, text, messageId, generateInlineKeyboardMarkup())
+		token, chatId, text, messageId, generateInlineKeyboardMarkup(neededSum))
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -291,14 +299,37 @@ func sendBotVerificationQuestionMessage(chatId int64, messageId int64) int64 {
 	return 0
 }
 
-func generateInlineKeyboardMarkup() string {
-	buttons := [][]map[string]string{
+func generateInlineKeyboardMarkup(neededAnswer int) string {
+	// generate number in range 0 to 1 (inclusive) in order dynamically put buttons
+	randomNumber := rand.Intn(2)
+
+	// generate random number in range 1 to 10 (inclusive) in order display spoofed answer
+	spoofedAnswer := rand.Intn(10) + 1
+	var spoofedAnswerString string = strconv.Itoa(spoofedAnswer)
+
+	var neededAnswerString string = strconv.Itoa(neededAnswer)
+
+	buttons0 := [][]map[string]string{
 		{
-			{"text": "5", "callback_data": "5"},
-			{"text": "6", "callback_data": "6"},
+			{"text": neededAnswerString, "callback_data": neededAnswerString},
+			{"text": spoofedAnswerString, "callback_data": spoofedAnswerString},
 		},
 	}
-	replyMarkup := map[string][][]map[string]string{"inline_keyboard": buttons}
+
+	buttons1 := [][]map[string]string{
+		{
+			{"text": spoofedAnswerString, "callback_data": spoofedAnswerString},
+			{"text": neededAnswerString, "callback_data": neededAnswerString},
+		},
+	}
+
+	var replyMarkup map[string][][]map[string]string
+	if randomNumber == 0 {
+		replyMarkup = map[string][][]map[string]string{"inline_keyboard": buttons0}
+	} else {
+		replyMarkup = map[string][][]map[string]string{"inline_keyboard": buttons1}
+	}
+
 	markupJSON, _ := json.Marshal(replyMarkup)
 	return string(markupJSON)
 }
@@ -314,6 +345,7 @@ func startDeleteTimer(chatId int64, userMessageId int64, botQuestionMessageId in
 	deleteMessage(chatId, botQuestionMessageId)
 	deleteTimers.Delete(userMessageId)
 	sentOwnBotQuestionIds.Delete(userMessageId)
+	userNeededAnswersList.Delete(userMessageId)
 
 	sendDebugMessage(chatId, "after timer, after deleting messages, sending message in reply to post with report text.")
 
